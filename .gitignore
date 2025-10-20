@@ -1,0 +1,19 @@
+# Environment variables
+.env.local
+.env
+
+# Dependencies
+node_modules/
+
+# Convex generated files
+convex/_generated/
+convex/*.js
+convex/*.js.map
+
+# Build outputs
+dist/
+.vite/
+
+# IDE
+.vscode/
+.idea/

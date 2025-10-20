@@ -1,0 +1,360 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HackTown (Phaser Lite)</title>
+    <!-- Departure Mono font for crisp pixel-perfect text -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap" rel="stylesheet">
+    <style>
+      html, body { margin:0; height:100%; background:#0c0f14; color:#ddd; font:13px system-ui; }
+      #hud { position:fixed; left:10px; top:10px; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; z-index:10; }
+      #hud b { font-weight:600; }
+      #help { position:fixed; right:10px; top:10px; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; z-index:10; }
+      a { color:#9ad; }
+
+      /* Dashboard UI */
+      #dashboard {
+        position: fixed;
+        right: 10px;
+        top: 60px;
+        background: rgba(0, 0, 0, 0.45);
+        padding: 10px 12px;
+        border-radius: 10px 10px 0 0;
+        z-index: 10;
+        font-family: 'Courier New', 'Courier', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        color: #ddd;
+        width: 296px;
+      }
+      #dashboard .title {
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #9ad;
+        letter-spacing: 1px;
+      }
+      #dashboard .stat-line {
+        margin: 2px 0;
+      }
+      #dashboard .stat-good { color: #7ED321; }
+      #dashboard .stat-bad { color: #FF6B35; }
+      #dashboard .stat-neutral { color: #9ad; }
+      #dashboard .progress-bar {
+        display: inline-block;
+        font-family: monospace;
+        letter-spacing: -1px;
+      }
+
+      /* Main Panel - Bottom of screen */
+      #main-panel {
+        position: fixed;
+        left: 50%;
+        bottom: 10px;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.85);
+        padding: 14px 18px;
+        border-radius: 10px;
+        border: 2px solid #333;
+        z-index: 10;
+        font-family: 'Departure Mono', 'Courier New', monospace;
+        font-size: 11px;
+        line-height: 1.8;
+        color: #ddd;
+        max-width: 900px;
+        min-width: 560px;
+        display: flex;
+        gap: 18px;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .panel-column {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 250px;
+        min-height: 0;
+        max-height: 160px;
+      }
+      #commentary-panel {
+        gap: 8px;
+      }
+      #thought-panel {
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 8px;
+        padding: 8px 10px;
+        overflow-y: auto;
+      }
+      #main-panel .title {
+        font-size: 11px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #9ad;
+        letter-spacing: 1px;
+        text-align: center;
+      }
+      #commentary-panel .tech-stack {
+        font-size: 10px;
+        color: #ccc;
+        text-align: center;
+        margin-bottom: 6px;
+        letter-spacing: 0.5px;
+      }
+      #commentary-panel .commentary-stream {
+        flex: 1;
+        margin-top: 6px;
+        padding-top: 4px;
+        border-top: 1px solid #444;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: #555 rgba(0,0,0,0.3);
+      }
+      #commentary-panel .commentary-line {
+        font-size: 10px;
+        color: #ddd;
+        margin: 2px 0;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+      }
+      #commentary-panel .commentary-line.visible {
+        opacity: 1;
+      }
+      #commentary-panel .commentary-stream::-webkit-scrollbar {
+        width: 6px;
+      }
+      #commentary-panel .commentary-stream::-webkit-scrollbar-track {
+        background: rgba(0,0,0,0.3);
+        border-radius: 3px;
+      }
+      #commentary-panel .commentary-stream::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 3px;
+      }
+      #thought-panel .subtitle {
+        font-size: 10px;
+        font-weight: 600;
+        color: #9ad;
+        text-transform: uppercase;
+        margin: 6px 0 4px;
+        letter-spacing: 0.5px;
+      }
+      #thought-panel .thought-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      #thought-panel .thought-item {
+        margin: 3px 0;
+        padding: 2px 0;
+      }
+      #thought-panel .npc-name {
+        color: #7ED321;
+        font-weight: 600;
+      }
+      #thought-panel .thought-text {
+        color: #ccc;
+      }
+      #thought-panel::-webkit-scrollbar {
+        width: 6px;
+      }
+      #thought-panel::-webkit-scrollbar-track {
+        background: rgba(0,0,0,0.3);
+        border-radius: 3px;
+      }
+      #thought-panel::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 3px;
+      }
+
+      /* Protagonist Panel - Right side below dashboard */
+      #protagonist-panel {
+        position: fixed;
+        right: 10px;
+        top: var(--protagonist-top, 340px);
+        background: rgba(0, 0, 0, 0.45);
+        padding: 10px 12px;
+        border-radius: 0 0 10px 10px;
+        z-index: 10;
+        font-family: 'Courier New', 'Courier', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        color: #ddd;
+        width: 296px;
+        max-height: 400px;
+        overflow-y: auto;
+        border-top: 2px solid #444;
+      }
+      #protagonist-panel .title {
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #9ad;
+        letter-spacing: 1px;
+      }
+      #protagonist-panel .section {
+        margin-top: 8px;
+        padding-top: 6px;
+        border-top: 1px solid #444;
+      }
+      #protagonist-panel .section-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #9ad;
+        margin-bottom: 4px;
+        letter-spacing: 0.5px;
+      }
+      #protagonist-panel .stat-line {
+        margin: 2px 0;
+        font-size: 11px;
+      }
+      #protagonist-panel .delta-positive {
+        color: #7ED321;
+      }
+      #protagonist-panel .delta-negative {
+        color: #FF6B35;
+      }
+      #protagonist-panel .life-story {
+        font-size: 11px;
+        line-height: 1.5;
+        font-style: italic;
+        color: #ccc;
+        margin: 6px 0;
+        padding: 6px 8px;
+        background: rgba(255,255,255,0.03);
+        border-radius: 5px;
+      }
+      #protagonist-panel .event-item {
+        font-size: 11px;
+        margin: 3px 0;
+        padding-left: 12px;
+        position: relative;
+      }
+      #protagonist-panel .event-item::before {
+        content: "•";
+        position: absolute;
+        left: 0;
+        color: #9ad;
+      }
+      #protagonist-panel::-webkit-scrollbar {
+        width: 6px;
+      }
+      #protagonist-panel::-webkit-scrollbar-track {
+        background: rgba(0,0,0,0.3);
+        border-radius: 3px;
+      }
+      #protagonist-panel::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 3px;
+      }
+      #protagonist-panel.hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div><b>HackTown</b> — ArrowKeys/WASD move</div>
+      <div>Time: <span id="clock">08:00</span> • Agents: <span id="agentCount">0</span></div>
+    </div>
+    <div id="help">Goal: agents gossip about a <b>6:00 PM</b> café meetup, then gather there.</div>
+
+    <!-- Dashboard Stats -->
+    <div id="dashboard">
+      <div class="title">HACKTOWN</div>
+      <div class="stat-line">
+        <span class="stat-good">Alive: <span id="stat-alive">0</span></span> |
+        <span class="stat-neutral">Births: <span id="stat-births">0</span></span> |
+        <span class="stat-bad">Deaths: <span id="stat-deaths">0</span></span>
+      </div>
+      <div class="stat-line">
+        <span class="stat-neutral">Time: <span id="stat-time">0</span> min</span> |
+        <span class="stat-neutral">Thoughts: <span id="stat-thoughts">0</span></span>
+      </div>
+      <div class="stat-line">
+        Prosperity: <span class="progress-bar" id="bar-prosperity">░░░░░░░░░░</span> <span id="val-prosperity">--</span>
+      </div>
+      <div class="stat-line">
+        Stability: <span class="progress-bar" id="bar-stability">░░░░░░░░░░</span> <span id="val-stability">--</span>
+      </div>
+      <div class="stat-line">
+        Happiness: <span class="progress-bar" id="bar-happiness">░░░░░░░░░░</span> <span id="val-happiness">--</span>
+      </div>
+      <div class="stat-line">
+        Tension: <span class="progress-bar" id="bar-tension">░░░░░░░░░░</span> <span id="val-tension">--</span>
+      </div>
+      <div class="stat-line">
+        Scarcity: <span class="progress-bar" id="bar-scarcity">░░░░░░░░░░</span> <span id="val-scarcity">--</span>
+      </div>
+    </div>
+
+    <!-- Main Panel - Bottom of screen -->
+    <div id="main-panel">
+      <div id="commentary-panel" class="panel-column">
+        <div class="title">HACKTOWN COMMENTARY</div>
+        <div class="tech-stack" id="commentary-tech">
+          ⚙️ Tech Stack: Phaser 3 • Convex • Node.js • Groq/Ollama AI
+        </div>
+        <div class="commentary-stream" id="commentary-stream">
+          <!-- Commentary lines injected by main.js -->
+        </div>
+      </div>
+      <div id="thought-panel" class="panel-column">
+        <div class="title">NEARBY NPC THOUGHTS</div>
+        <div class="subtitle">Within 200px of player</div>
+        <ul class="thought-list" id="thought-list">
+          <!-- Populated dynamically by main.js -->
+        </ul>
+      </div>
+    </div>
+
+    <!-- Protagonist Panel - Right side -->
+    <div id="protagonist-panel" class="hidden">
+      <div class="title">★ PROTAGONIST</div>
+
+      <div id="protag-header" style="margin-bottom: 6px;">
+        <div style="font-size: 12px; font-weight: bold; color: #7ED321;">
+          <span id="protag-name">Loading...</span>
+        </div>
+        <div style="font-size: 11px; margin-top: 2px; color: #999;">
+          <span id="protag-status">Age: -- | Status: --</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">PERSONALITY EVOLUTION</div>
+        <div id="protag-personality"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">EMOTIONAL STATE</div>
+        <div id="protag-emotional"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">LIFE STORY</div>
+        <div class="life-story" id="protag-story">
+          Observing their journey...
+        </div>
+        <div style="font-size: 10px; color: #666; text-align: right; margin-top: 4px;" id="protag-story-age">
+          --
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">RELATIONSHIPS</div>
+        <div id="protag-relationships"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">MAJOR EVENTS</div>
+        <div id="protag-events"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
