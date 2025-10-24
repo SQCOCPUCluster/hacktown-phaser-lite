@@ -864,7 +864,7 @@ class HackTownConvexScene extends Phaser.Scene {
   constructor() { super('hack'); }
 
   init() {
-    this.w = 900; this.h = 520;
+    this.w = 2400; this.h = 1400;
     this.origin = new Phaser.Math.Vector2(0,0);
     this.start = performance.now();
     this.nowMs = 0;
@@ -944,6 +944,31 @@ class HackTownConvexScene extends Phaser.Scene {
       targets: church,
       alpha: { from: 0.85, to: 1.0 },
       duration: 3500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    // ABANDONED BUILDING - dark, isolated area (bottom-right corner)
+    const abandoned = this.add.rectangle(1100, 600, 260, 180, 0x1a1418).setOrigin(0,0).setStrokeStyle(2,0x4a3a44);
+    const abandonedLabel = this.add.text(1230, 595, '🏚️ ABANDONED BUILDING', {color:'#766', fontSize:'12px', fontStyle: 'bold'}).setOrigin(0.5,1);
+
+    // Darker, ominous flickering effect
+    this.tweens.add({
+      targets: abandoned,
+      alpha: { from: 0.6, to: 0.85 },
+      duration: 4000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Quad.easeInOut'
+    });
+
+    // Add a darker inner shadow effect for depth
+    const abandonedShadow = this.add.rectangle(1115, 615, 230, 150, 0x0a0608, 0.5).setOrigin(0,0);
+    this.tweens.add({
+      targets: abandonedShadow,
+      alpha: { from: 0.3, to: 0.6 },
+      duration: 5000,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
@@ -1796,8 +1821,8 @@ class HackTownConvexScene extends Phaser.Scene {
 // ============================================================
 const game = new Phaser.Game({
   type: Phaser.AUTO,
-  width: 900,
-  height: 520,
+  width: 2400,
+  height: 1400,
   backgroundColor: '#0c0f14',
   parent: document.body,
   scene: [HackTownConvexScene],
@@ -1809,3 +1834,124 @@ const game = new Phaser.Game({
 });
 
 logger.debug('🚀 HackTown Convex Edition started');
+
+// ============================================================
+// PHYSICS CONTROL PANEL
+// ============================================================
+
+// Toggle panel open/close
+const physicsPanel = document.getElementById('physics-panel');
+const physicsToggleBtn = document.getElementById('physics-toggle-btn');
+
+physicsToggleBtn.addEventListener('click', () => {
+  physicsPanel.classList.toggle('open');
+  physicsToggleBtn.textContent = physicsPanel.classList.contains('open')
+    ? '✖️ Close'
+    : '⚙️ Physics Lab';
+});
+
+// Initialize all physics sliders
+const physicsSliders = document.querySelectorAll('.physics-slider');
+
+physicsSliders.forEach(slider => {
+  const valueDisplay = document.getElementById(`val-${slider.id}`);
+
+  slider.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    valueDisplay.textContent = value.toFixed(3);
+
+    // Send update to Convex backend
+    updatePhysicsParameter(slider.id, value);
+  });
+});
+
+async function updatePhysicsParameter(key, value) {
+  try {
+    await convex.mutation('physicsConfig:updatePhysicsParam', { key, value });
+    logger.debug(`✅ Updated physics param: ${key} = ${value}`);
+  } catch (error) {
+    logger.error('❌ Failed to update physics parameter:', error);
+  }
+}
+
+// Preset configurations
+const presets = {
+  'peaceful': {
+    'energy-decay-moving': 0.005,
+    'social-decay': 0.001,
+    'food-regrowth': 0.005,
+    'trauma-evap': 0.02
+  },
+  'harsh': {
+    'energy-decay-moving': 0.025,
+    'social-decay': 0.008,
+    'food-regrowth': 0.0005,
+    'trauma-evap': 0.002
+  },
+  'volatile': {
+    'heat-diffusion': 0.25,
+    'trauma-diffusion': 0.18,
+    'heat-evap': 0.05,
+    'trauma-evap': 0.001
+  },
+  'default': {
+    'energy-decay-moving': 0.010,
+    'social-decay': 0.003,
+    'heat-diffusion': 0.12,
+    'trauma-diffusion': 0.08,
+    'heat-evap': 0.020,
+    'trauma-evap': 0.005,
+    'food-regrowth': 0.002
+  }
+};
+
+Object.keys(presets).forEach(presetKey => {
+  const btn = document.getElementById(`preset-${presetKey}`);
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const preset = presets[presetKey];
+      Object.keys(preset).forEach(sliderId => {
+        const slider = document.getElementById(sliderId);
+        if (slider) {
+          slider.value = preset[sliderId];
+          slider.dispatchEvent(new Event('input'));
+        }
+      });
+      logger.info(`🎬 Applied ${presetKey} preset`);
+    });
+  }
+});
+
+// Metrics refresh
+async function refreshPhysicsMetrics() {
+  try {
+    const metrics = await convex.query('physicsConfig:getEmergenceMetrics');
+
+    // Update action counts
+    document.getElementById('metric-seeking-food').textContent = metrics.actionCounts.SEEK_FOOD || 0;
+    document.getElementById('metric-socializing').textContent = metrics.actionCounts.SOCIALIZE || 0;
+    document.getElementById('metric-fleeing').textContent = metrics.actionCounts.AVOID_HEAT || 0;
+
+    // Update crisis stats
+    document.getElementById('metric-despair').textContent = metrics.crisisStats.despairCount;
+
+    logger.debug('📊 Physics metrics refreshed');
+  } catch (error) {
+    logger.error('Failed to refresh physics metrics:', error);
+  }
+}
+
+// Manual refresh button
+const refreshBtn = document.getElementById('refresh-metrics');
+if (refreshBtn) {
+  refreshBtn.addEventListener('click', refreshPhysicsMetrics);
+}
+
+// Auto-refresh metrics every 10 seconds when panel is open
+setInterval(() => {
+  if (physicsPanel.classList.contains('open')) {
+    refreshPhysicsMetrics();
+  }
+}, 10000);
+
+logger.info('⚙️ Physics Control Panel initialized');

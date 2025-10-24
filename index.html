@@ -10,9 +10,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Departure+Mono&display=swap" rel="stylesheet">
     <style>
       html, body { margin:0; height:100%; background:#0c0f14; color:#ddd; font:13px system-ui; }
-      #hud { position:fixed; left:10px; top:10px; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; z-index:10; }
+
+      /* Game canvas container - offset for physics panel */
+      body > canvas {
+        margin-left: 360px !important;
+      }
+      #hud { position:fixed; left:370px; top:10px; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; z-index:10; }
       #hud b { font-weight:600; }
-      #help { position:fixed; right:10px; top:10px; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; z-index:10; }
+      #help { position:fixed; right:10px; top:10px; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; z-index:10; max-width: calc(100vw - 800px); }
       a { color:#9ad; }
 
       /* Dashboard UI */
@@ -49,10 +54,10 @@
         letter-spacing: -1px;
       }
 
-      /* Main Panel - Bottom of screen */
+      /* Main Panel - Bottom of screen (offset for physics panel) */
       #main-panel {
         position: fixed;
-        left: 50%;
+        left: calc(50% + 180px);
         bottom: 10px;
         transform: translateX(-50%);
         background: rgba(0, 0, 0, 0.85);
@@ -253,14 +258,274 @@
       #protagonist-panel.hidden {
         display: none;
       }
+
+      /* Physics Control Panel - Left side (always visible) */
+      #physics-panel {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 360px;
+        background: rgba(10, 14, 20, 0.97);
+        border-right: 2px solid #2a3f5f;
+        z-index: 20;
+        overflow-y: auto;
+        padding: 16px;
+        font-family: 'Departure Mono', 'Courier New', monospace;
+        font-size: 11px;
+      }
+      #physics-panel::-webkit-scrollbar {
+        width: 8px;
+      }
+      #physics-panel::-webkit-scrollbar-track {
+        background: rgba(0,0,0,0.3);
+      }
+      #physics-panel::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 4px;
+      }
+      .physics-section {
+        background: rgba(20, 25, 35, 0.6);
+        border: 1px solid #2a3f5f;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .physics-section-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #9ad;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .physics-control {
+        margin-bottom: 10px;
+      }
+      .physics-control-label {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+        color: #bbb;
+        font-size: 10px;
+      }
+      .physics-control-name {
+        color: #9ad;
+      }
+      .physics-control-value {
+        color: #7ED321;
+        font-weight: 700;
+      }
+      .physics-slider {
+        width: 100%;
+        height: 5px;
+        background: #1a2332;
+        border-radius: 3px;
+        outline: none;
+        -webkit-appearance: none;
+      }
+      .physics-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        background: #9ad;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      .physics-slider::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        background: #9ad;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+      .physics-preset-btn {
+        padding: 6px 10px;
+        background: #1a2332;
+        border: 1px solid #2a3f5f;
+        border-radius: 4px;
+        color: #9ad;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 10px;
+        margin: 4px 4px 4px 0;
+        transition: all 0.2s ease;
+      }
+      .physics-preset-btn:hover {
+        background: #2a3f5f;
+        border-color: #9ad;
+      }
+      .physics-metrics {
+        background: #0f1419;
+        border: 1px solid #2a3f5f;
+        border-radius: 4px;
+        padding: 8px;
+        margin-top: 8px;
+      }
+      .physics-metric-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 3px 0;
+        font-size: 10px;
+      }
+      .physics-metric-label {
+        color: #888;
+      }
+      .physics-metric-value {
+        color: #7ED321;
+        font-weight: 700;
+      }
     </style>
   </head>
   <body>
+    <!-- Physics Control Panel - Left Side (Always Visible) -->
+    <div id="physics-panel">
+      <div style="text-align: center; margin-bottom: 16px;">
+        <div style="font-size: 14px; font-weight: 700; color: #9ad; letter-spacing: 2px;">🎮 WORLD SETTINGS</div>
+        <div style="font-size: 9px; color: #666; margin-top: 4px;">Control how harsh or easy life is</div>
+      </div>
+
+      <!-- Quick Presets -->
+      <div class="physics-section">
+        <div class="physics-section-title">🎬 Difficulty Presets</div>
+        <button class="physics-preset-btn" id="preset-peaceful">🕊️ Easy Mode<br><span style="font-size: 8px; opacity: 0.7;">nobody starves</span></button>
+        <button class="physics-preset-btn" id="preset-harsh">⚡ Hard Mode<br><span style="font-size: 8px; opacity: 0.7;">survival struggle</span></button>
+        <button class="physics-preset-btn" id="preset-volatile">🌪️ Chaos Mode<br><span style="font-size: 8px; opacity: 0.7;">drama everywhere</span></button>
+        <button class="physics-preset-btn" id="preset-default">⚙️ Balanced<br><span style="font-size: 8px; opacity: 0.7;">normal difficulty</span></button>
+      </div>
+
+      <!-- Drive Decay Rates -->
+      <div class="physics-section">
+        <div class="physics-section-title">⏱️ Life Pressures</div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">How Fast People Get Hungry</span>
+            <span class="physics-control-value" id="val-energy-decay-moving">0.010</span>
+          </div>
+          <input type="range" class="physics-slider" id="energy-decay-moving" min="0.001" max="0.05" step="0.001" value="0.010">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Low = can walk all day • High = starving quickly</div>
+        </div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">How Fast People Get Lonely</span>
+            <span class="physics-control-value" id="val-social-decay">0.003</span>
+          </div>
+          <input type="range" class="physics-slider" id="social-decay" min="0.001" max="0.02" step="0.001" value="0.003">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Low = loners thrive • High = need constant company</div>
+        </div>
+      </div>
+
+      <!-- Field Dynamics -->
+      <div class="physics-section">
+        <div class="physics-section-title">🌊 How Bad Vibes Spread</div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">Danger Spreads Like...</span>
+            <span class="physics-control-value" id="val-heat-diffusion">0.12</span>
+          </div>
+          <input type="range" class="physics-slider" id="heat-diffusion" min="0" max="0.3" step="0.01" value="0.12">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Slow = stays local • Fast = panic everywhere</div>
+        </div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">Sadness Spreads Like...</span>
+            <span class="physics-control-value" id="val-trauma-diffusion">0.08</span>
+          </div>
+          <input type="range" class="physics-slider" id="trauma-diffusion" min="0" max="0.3" step="0.01" value="0.08">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Slow = only victims affected • Fast = whole town depressed</div>
+        </div>
+      </div>
+
+      <!-- Field Evaporation -->
+      <div class="physics-section">
+        <div class="physics-section-title">💨 How Long Things Linger</div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">Danger Memory Fades...</span>
+            <span class="physics-control-value" id="val-heat-evap">0.020</span>
+          </div>
+          <input type="range" class="physics-slider" id="heat-evap" min="0" max="0.1" step="0.005" value="0.020">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Slow = grudges forever • Fast = quick forgiveness</div>
+        </div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">Trauma Heals...</span>
+            <span class="physics-control-value" id="val-trauma-evap">0.005</span>
+          </div>
+          <input type="range" class="physics-slider" id="trauma-evap" min="0" max="0.1" step="0.005" value="0.005">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Slow = PTSD lasts forever • Fast = resilient people</div>
+        </div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">Café Restocks...</span>
+            <span class="physics-control-value" id="val-food-regrowth">0.002</span>
+          </div>
+          <input type="range" class="physics-slider" id="food-regrowth" min="0" max="0.01" step="0.0005" value="0.002">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Slow = scarcity • Fast = endless buffet</div>
+        </div>
+      </div>
+
+      <!-- Dark Psychology -->
+      <div class="physics-section">
+        <div class="physics-section-title">🌑 What Breaks People</div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">Loneliness Hurts...</span>
+            <span class="physics-control-value" id="val-isolation-weight">0.35</span>
+          </div>
+          <input type="range" class="physics-slider" id="isolation-weight" min="0" max="1" step="0.05" value="0.35">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Low = hermits thrive • High = need friends to survive</div>
+        </div>
+
+        <div class="physics-control">
+          <div class="physics-control-label">
+            <span class="physics-control-name">Hunger Hurts Mentally...</span>
+            <span class="physics-control-value" id="val-starvation-weight">0.30</span>
+          </div>
+          <input type="range" class="physics-slider" id="starvation-weight" min="0" max="1" step="0.05" value="0.30">
+          <div style="font-size: 8px; color: #666; margin-top: 2px;">Low = empty stomach, happy mind • High = starvation = depression</div>
+        </div>
+      </div>
+
+      <!-- Live Metrics -->
+      <div class="physics-section">
+        <div class="physics-section-title">📊 Live Metrics</div>
+        <div class="physics-metrics">
+          <div class="physics-metric-row">
+            <span class="physics-metric-label">Seeking Food:</span>
+            <span class="physics-metric-value" id="metric-seeking-food">--</span>
+          </div>
+          <div class="physics-metric-row">
+            <span class="physics-metric-label">Socializing:</span>
+            <span class="physics-metric-value" id="metric-socializing">--</span>
+          </div>
+          <div class="physics-metric-row">
+            <span class="physics-metric-label">Fleeing Danger:</span>
+            <span class="physics-metric-value" id="metric-fleeing">--</span>
+          </div>
+          <div class="physics-metric-row">
+            <span class="physics-metric-label">In Despair:</span>
+            <span class="physics-metric-value" id="metric-despair">--</span>
+          </div>
+        </div>
+        <button class="physics-preset-btn" id="refresh-metrics" style="width: 100%; margin-top: 8px;">🔄 Refresh Metrics</button>
+      </div>
+    </div>
+
     <div id="hud">
       <div><b>HackTown</b> — ArrowKeys/WASD move</div>
       <div>Time: <span id="clock">08:00</span> • Agents: <span id="agentCount">0</span></div>
     </div>
-    <div id="help">Goal: agents gossip about a <b>6:00 PM</b> café meetup, then gather there.</div>
+    <div id="help">Goal: agents gossip about a <b>6:00 PM</b> café meetup, then gather there. • Press <b>F</b> for fields • Click <b>⚙️ Physics Lab</b> to tune emergence</div>
 
     <!-- Dashboard Stats -->
     <div id="dashboard">

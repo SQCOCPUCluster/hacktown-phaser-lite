@@ -133,6 +133,16 @@ export default defineSchema({
   }).index("by_active", ["active"])          // Find active conversations quickly
     .index("by_participants", ["participant1Id", "participant2Id"]), // Check for existing conversations
 
+  // Physics configuration table - tunable emergence parameters
+  physicsConfig: defineTable({
+    key: v.string(),                         // Config parameter name
+    value: v.number(),                       // Parameter value
+    category: v.string(),                    // "drive_weights", "decay_rates", "field_dynamics", "psychology"
+    description: v.string(),                 // Human-readable description
+    lastUpdated: v.number(),                 // Timestamp of last change
+  }).index("by_key", ["key"])                // Find config by key
+    .index("by_category", ["category"]),     // Find all configs in a category
+
   // Protagonist table - Designated subject character to track over time
   protagonist: defineTable({
     entityId: v.id("entities"),              // Which NPC is the protagonist

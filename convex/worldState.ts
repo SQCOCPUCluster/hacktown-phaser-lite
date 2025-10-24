@@ -2,6 +2,7 @@ import { logger } from "./logger";
 // Functions for global world stats (time, population, births/deaths)
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // Get the current world statistics
 export const getWorldState = query({
@@ -53,6 +54,10 @@ export const initializeWorld = mutation({
         scarcity: 0.3,     // Start with some scarcity
       },
     });
+
+    // Initialize physics configuration with default values
+    await ctx.scheduler.runAfter(0, internal.physicsConfig.initializePhysicsConfig);
+    logger.debug("🔧 Physics config initialization scheduled");
 
     // PROTAGONIST: Auto-designate a random NPC after a short delay
     // (Wait for initial NPCs to spawn first)
