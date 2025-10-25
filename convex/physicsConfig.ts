@@ -202,6 +202,50 @@ export const resetPhysicsConfig = mutation({
 });
 
 /**
+ * Helper to get physics params with in-memory caching
+ * This is used internally by simulation code to avoid repeated DB queries
+ * Returns a complete map of all parameters
+ */
+export const getPhysicsParamsWithCache = query({
+  handler: async (ctx) => {
+    const allConfigs = await ctx.db.query("physicsConfig").collect();
+
+    // Convert to key-value object for easier access
+    const configMap: Record<string, number> = {};
+    for (const config of allConfigs) {
+      configMap[config.key] = config.value;
+    }
+
+    // Provide defaults for any missing keys (fallback)
+    const defaults: Record<string, number> = {
+      "energy-decay-moving": 0.010,
+      "energy-decay-still": 0.005,
+      "social-decay": 0.003,
+      "safety-decay": 0.002,
+      "heat-diffusion": 0.12,
+      "food-diffusion": 0.05,
+      "trauma-diffusion": 0.08,
+      "heat-evap": 0.020,
+      "food-evap": 0.010,
+      "trauma-evap": 0.005,
+      "food-regrowth": 0.002,
+      "isolation-weight": 0.35,
+      "starvation-weight": 0.30,
+      "trauma-despair": 0.25,
+      "suicide-prob": 0.08,
+      "violence-prob": 0.04,
+      "cornered-weight": 0.35,
+      "frustrated-weight": 0.25,
+      "trauma-aggression": 0.20,
+      "low-empathy-weight": 0.25,
+    };
+
+    // Merge with defaults
+    return { ...defaults, ...configMap };
+  },
+});
+
+/**
  * Get emergence metrics for the control panel
  * Calculates live statistics about NPC behavior patterns
  */

@@ -113,6 +113,16 @@ export const worldTick = internalMutation({
     }
 
     // ============================================================
+    // FETCH PHYSICS CONFIG - Load runtime-tunable parameters
+    // ============================================================
+    const physicsParams = await ctx.runQuery(internal.physicsConfig.getPhysicsParamsWithCache);
+    logger.debug(`Loaded physics config:`, {
+      energyDecayMoving: physicsParams["energy-decay-moving"],
+      socialDecay: physicsParams["social-decay"],
+      heatDiffusion: physicsParams["heat-diffusion"]
+    });
+
+    // ============================================================
     // FETCH FIELD CACHE - For utility-based decision making
     // ============================================================
     const fieldCache = await ctx.db.query("fields").collect();
@@ -257,11 +267,13 @@ export const worldTick = internalMutation({
         Math.pow(entity.y - (entity.targetY || entity.y), 2)
       );
       const isMoving = distanceMoved > 5;
-      const energyDecay = isMoving ? 0.01 : 0.005; // Moving costs more energy
+      const energyDecay = isMoving
+        ? physicsParams["energy-decay-moving"]
+        : physicsParams["energy-decay-still"] || 0.005;
       energy = Math.max(0, energy - energyDecay);
 
       // Social drains naturally (loneliness creeps in)
-      const socialDecay = 0.003;
+      const socialDecay = physicsParams["social-decay"] || 0.003;
       social = Math.max(0, social - socialDecay);
 
       // Safety decays in high-heat areas (danger reduces sense of security)
@@ -288,9 +300,9 @@ export const worldTick = internalMutation({
       // Process trauma and calculate mental breakpoint
       const mentalBreakpoint = processTrauma(entity, currentTime);
 
-      // Calculate psychological states
-      const despair = calculateDespair(entity, currentTime);
-      const aggression = calculateAggression(entity, currentTime);
+      // Calculate psychological states (with runtime physics params)
+      const despair = calculateDespair(entity, currentTime, physicsParams);
+      const aggression = calculateAggression(entity, currentTime, physicsParams);
 
       // Check for mental breakdown (personality shifts)
       const breakdown = checkMentalBreakdown({ ...entity, mentalBreakpoint });
@@ -309,7 +321,7 @@ export const worldTick = internalMutation({
       }
 
       // SUICIDE CHECK (very rare but emergent)
-      if (shouldAttemptSuicide(despair)) {
+      if (shouldAttemptSuicide(despair, physicsParams)) {
         // NPC takes their own life
         await ctx.db.patch(entity._id, {
           alive: false,
@@ -360,7 +372,7 @@ export const worldTick = internalMutation({
         return dist < 50;
       });
 
-      if (shouldAttemptMurder(aggression, nearbyVictims.length > 0)) {
+      if (shouldAttemptMurder(aggression, nearbyVictims.length > 0, physicsParams)) {
         // Target weakest nearby NPC
         const victim = nearbyVictims.sort((a, b) => a.health - b.health)[0];
 
@@ -672,10 +684,13 @@ export const reaperTick = internalMutation({
 // Runs every few seconds to give 3-5 NPCs new thoughts via Groq LLM
 export const aiThinkTick = internalAction({
   handler: async (ctx) => {
-    logger.tick("AI Thinker tick running (Ollama via ngrok enabled)...");
+    logger.tick("AI Thinker tick running (database-driven load balancer)...");
 
     // Get Groq API key from environment (will fallback to Ollama if USE_GROQ=false in ai.ts)
     const apiKey = process.env.GROQ_API_KEY || "ollama-mode";
+
+    // Load GPU/model configurations from database
+    const serverConfigs = await ctx.runQuery(internal.tick.getLoadBalancerConfig);
 
     // Get all living NPCs via query
     const entities = await ctx.runQuery(internal.tick.getEntitiesForAI);
@@ -745,8 +760,8 @@ export const aiThinkTick = internalAction({
           mentalBreakpoint: entity.mentalBreakpoint,
         };
 
-        // Generate thought using Groq (this can use fetch in an action!)
-        const thought = await generateThought(apiKey, entity.personality, context);
+        // Generate thought using database-driven load balancer
+        const thought = await generateThought(apiKey, entity.personality, context, serverConfigs);
 
         // Update entity with new thought via mutation
         await ctx.runMutation(internal.tick.updateEntityAction, {
@@ -1247,6 +1262,27 @@ export const getActiveEventsForAI = internalQuery({
   },
 });
 
+export const getLoadBalancerConfig = internalQuery({
+  handler: async (ctx) => {
+    // Get enabled configurations sorted by priority
+    const configs = await ctx.db
+      .query("ollamaConfig")
+      .withIndex("by_enabled", (q) => q.eq("enabled", true))
+      .collect();
+
+    // Sort by priority and convert to ServerConfig format
+    return configs
+      .sort((a, b) => a.priority - b.priority)
+      .map(config => ({
+        url: config.url,
+        name: config.name,
+        type: config.type,
+        weight: config.weight,
+        model: config.model,
+      }));
+  },
+});
+
 export const getWorldStateForAI = internalQuery({
   handler: async (ctx) => {
     return await ctx.db.query("worldState").first();
@@ -1325,6 +1361,10 @@ export const generateDialogueForConversation = internalAction({
     currentTime: v.number(),
   },
   handler: async (ctx, { npc1Id, npc2Id, npc1, npc2, activeEvents, currentTime }) => {
+    // Load GPU/model configurations from database
+    const serverConfigs = await ctx.runQuery(internal.tick.getLoadBalancerConfig);
+    const apiKey = process.env.GROQ_API_KEY || "ollama-mode";
+
     // Get recent memories for both NPCs
     const npc1Memories = await ctx.runQuery(internal.tick.getRecentMemoriesForAI, {
       entityId: npc1Id,
@@ -1336,7 +1376,7 @@ export const generateDialogueForConversation = internalAction({
       limit: 5,
     });
 
-    // Generate dialogue using AI (including dark psychology!)
+    // Generate dialogue using database-driven load balancer
     const dialogue = await generateDialogue(
       {
         name: npc1.name,
@@ -1345,6 +1385,8 @@ export const generateDialogueForConversation = internalAction({
         despair: npc1.despair,
         aggression: npc1.aggression,
         traumaMemories: npc1.traumaMemories,
+        energy: npc1.energy,
+        social: npc1.social,
       },
       {
         name: npc2.name,
@@ -1353,12 +1395,16 @@ export const generateDialogueForConversation = internalAction({
         despair: npc2.despair,
         aggression: npc2.aggression,
         traumaMemories: npc2.traumaMemories,
+        energy: npc2.energy,
+        social: npc2.social,
       },
       {
         activeEvents,
         location: { x: (npc1.x + npc2.x) / 2, y: (npc1.y + npc2.y) / 2 },
         worldTime: currentTime,
-      }
+      },
+      serverConfigs,
+      apiKey
     );
 
     return dialogue;

@@ -362,7 +362,7 @@ Example: "Ocean Lee started life as a bold explorer, making friends easily and s
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "llama3.2:3b",
+          model: "gemma3:12b",
           prompt: `${prompt}\n\nNarrative summary:`,
           stream: false,
           options: {

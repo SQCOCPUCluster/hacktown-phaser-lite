@@ -163,13 +163,14 @@ class OllamaLoadBalancer {
       return null;
     }
 
-    // Weighted round-robin selection
-    // Convert weights to cumulative probabilities
+    // Weighted round-robin selection with normalized weights
+    // Calculate total weight and normalize to ensure proper distribution
+    const totalWeight = healthyServers.reduce((sum, s) => sum + s.weight, 0);
     const random = Math.random();
     let cumulative = 0;
 
     for (const server of healthyServers) {
-      cumulative += server.weight;
+      cumulative += server.weight / totalWeight; // Normalize weights
       if (random <= cumulative) {
         return server;
       }
@@ -309,8 +310,39 @@ class OllamaLoadBalancer {
 let loadBalancerInstance: OllamaLoadBalancer | null = null;
 
 /**
- * Get the shared load balancer instance
+ * Server configuration interface for creating load balancer
+ */
+export interface ServerConfig {
+  url: string;
+  name: string;
+  type: "ollama" | "groq";
+  weight: number;
+  model?: string;
+}
+
+/**
+ * Get the shared load balancer instance with custom configuration
+ * This version accepts server configurations directly (for database-driven config)
+ *
+ * @param servers - Array of server configurations
+ * @param groqApiKey - Optional Groq API key for Groq servers
+ */
+export function getLoadBalancerWithConfig(
+  servers: ServerConfig[],
+  groqApiKey?: string
+): OllamaLoadBalancer {
+  // Always recreate instance to use latest configuration
+  // This ensures database changes are reflected immediately
+  loadBalancerInstance = new OllamaLoadBalancer(servers, groqApiKey);
+  return loadBalancerInstance;
+}
+
+/**
+ * Get the shared load balancer instance (LEGACY - uses hardcoded config)
  * Supports mixed providers: Ollama (local GPU) + Groq (cloud)
+ *
+ * NOTE: This function uses hardcoded configuration.
+ * For database-driven configuration, use getLoadBalancerWithConfig() instead.
  *
  * @param groqApiKey - Optional Groq API key. If not provided, only Ollama will be used.
  *                     In Convex functions, pass the API key from environment using:

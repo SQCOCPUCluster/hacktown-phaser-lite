@@ -12,6 +12,7 @@
     "@convex-dev/agent": "^0.2.10",
     "ai": "^5.0.76",
     "convex": "^1.28.0",
+    "convex-helpers": "^0.1.104",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "groq-sdk": "^0.33.0",

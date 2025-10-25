@@ -1,6 +1,7 @@
 import { logger } from "./logger";
 // Setup scripts to populate the database with starting NPCs and data
-import { internalMutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // Fill the world with 5 starting NPCs and their initial memories
 export const seedWorld = internalMutation({
@@ -181,6 +182,13 @@ export const seedWorld = internalMutation({
       entities: 5,
       memories: 5,
     };
+  },
+});
+
+// Public wrapper to trigger world seeding (callable from CLI)
+export const triggerSeedWorld = mutation({
+  handler: async (ctx) => {
+    return await ctx.runMutation(internal.seed.seedWorld);
   },
 });
 

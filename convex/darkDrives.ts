@@ -1,22 +1,11 @@
 // Dark psychology system - calculates despair, aggression, and emergent dark behaviors
 // NPCs can spiral into suicide or violence based on lived conditions
 
-// PSYCHOLOGICAL MODEL CONSTANTS
-const ISOLATION_WEIGHT = 0.35;        // Loneliness → despair
-const STARVATION_WEIGHT = 0.30;       // Hunger → despair
+// PSYCHOLOGICAL MODEL CONSTANTS (now loaded dynamically from physicsConfig)
+// These are fallback defaults only
 const CHRONIC_STRESS_THRESHOLD = 0.6; // When stress becomes chronic
-const TRAUMA_TO_DESPAIR = 0.25;       // How much trauma feeds despair
 const EMPATHY_BUFFER = 0.20;          // Empathy reduces suicide risk
-
-const CORNERED_WEIGHT = 0.35;         // Danger → aggression (fight response)
-const FRUSTRATED_WEIGHT = 0.25;       // Stress → aggression
-const TRAUMA_TO_AGGRESSION = 0.20;    // Traumatized people can become violent
-const LOW_EMPATHY_WEIGHT = 0.25;      // Lack of empathy enables violence
 const DESPERATION_THRESHOLD = 0.7;    // Starvation makes people dangerous
-
-// ACTION PROBABILITIES (per tick)
-const SUICIDE_BASE_RATE = 0.0008;     // 0.08% max per tick when despair = 1.0
-const MURDER_BASE_RATE = 0.0004;      // 0.04% max per tick when aggression = 1.0
 
 /**
  * Calculate despair level (suicidal ideation)
@@ -25,22 +14,26 @@ const MURDER_BASE_RATE = 0.0004;      // 0.04% max per tick when aggression = 1.
  */
 export function calculateDespair(
   npc: any,
-  worldTime: number
+  worldTime: number,
+  physicsParams: Record<string, number>
 ): number {
   // Loneliness compounds exponentially
   const social = npc.social ?? 0.5;
-  const isolation = Math.pow(1 - social, 2) * ISOLATION_WEIGHT;
+  const isolationWeight = physicsParams["isolation-weight"] || 0.35;
+  const isolation = Math.pow(1 - social, 2) * isolationWeight;
 
   // Hunger desperation
   const energy = npc.energy ?? 0.7;
-  const starvation = Math.pow(1 - energy, 2) * STARVATION_WEIGHT;
+  const starvationWeight = physicsParams["starvation-weight"] || 0.30;
+  const starvation = Math.pow(1 - energy, 2) * starvationWeight;
 
   // Chronic stress wears you down
   const stress = npc.stress ?? 0;
   const chronicStress = stress > CHRONIC_STRESS_THRESHOLD ? 0.3 : 0;
 
   // Trauma load from recent traumatic events
-  const traumaLoad = (npc.mentalBreakpoint ?? 0) * TRAUMA_TO_DESPAIR;
+  const traumaDespair = physicsParams["trauma-despair"] || 0.25;
+  const traumaLoad = (npc.mentalBreakpoint ?? 0) * traumaDespair;
 
   // Hopelessness from low mood
   const mood = npc.personality.mood ?? 0.5;
@@ -67,22 +60,27 @@ export function calculateDespair(
  */
 export function calculateAggression(
   npc: any,
-  worldTime: number
+  worldTime: number,
+  physicsParams: Record<string, number>
 ): number {
   // Fight response when cornered/unsafe
   const safety = npc.safety ?? 0.5;
-  const cornered = (1 - safety) * CORNERED_WEIGHT;
+  const corneredWeight = physicsParams["cornered-weight"] || 0.35;
+  const cornered = (1 - safety) * corneredWeight;
 
   // Stress/frustration
   const stress = npc.stress ?? 0;
-  const frustrated = stress * FRUSTRATED_WEIGHT;
+  const frustratedWeight = physicsParams["frustrated-weight"] || 0.25;
+  const frustrated = stress * frustratedWeight;
 
   // Trauma can make people violent
-  const traumatized = (npc.mentalBreakpoint ?? 0) * TRAUMA_TO_AGGRESSION;
+  const traumaAggression = physicsParams["trauma-aggression"] || 0.20;
+  const traumatized = (npc.mentalBreakpoint ?? 0) * traumaAggression;
 
   // Low empathy enables violence
   const empathy = npc.personality.empathy ?? 0.5;
-  const darkPersonality = (1 - empathy) * LOW_EMPATHY_WEIGHT;
+  const lowEmpathyWeight = physicsParams["low-empathy-weight"] || 0.25;
+  const darkPersonality = (1 - empathy) * lowEmpathyWeight;
 
   // Boldness = willingness to act on dark impulses
   const boldness = npc.personality.boldness ?? 0.5;
@@ -204,13 +202,15 @@ export function calculateHope(
  * Very rare, but emergent from despair level
  */
 export function shouldAttemptSuicide(
-  despair: number
+  despair: number,
+  physicsParams: Record<string, number>
 ): boolean {
   // Only possible if despair is very high
   if (despair < 0.75) return false;
 
-  // Probability scales with despair
-  const probability = despair * SUICIDE_BASE_RATE;
+  // Probability scales with despair (0.08% max when despair = 1.0)
+  const suicideBaseRate = (physicsParams["suicide-prob"] || 0.08) / 100; // Convert from % to decimal
+  const probability = despair * suicideBaseRate;
 
   return Math.random() < probability;
 }
@@ -221,7 +221,8 @@ export function shouldAttemptSuicide(
  */
 export function shouldAttemptMurder(
   aggression: number,
-  hasNearbyVictim: boolean
+  hasNearbyVictim: boolean,
+  physicsParams: Record<string, number>
 ): boolean {
   // Must have someone nearby to attack
   if (!hasNearbyVictim) return false;
@@ -229,8 +230,9 @@ export function shouldAttemptMurder(
   // Only possible if aggression is very high
   if (aggression < 0.65) return false;
 
-  // Probability scales with aggression
-  const probability = aggression * MURDER_BASE_RATE;
+  // Probability scales with aggression (0.04% max when aggression = 1.0)
+  const murderBaseRate = (physicsParams["violence-prob"] || 0.04) / 100; // Convert from % to decimal
+  const probability = aggression * murderBaseRate;
 
   return Math.random() < probability;
 }

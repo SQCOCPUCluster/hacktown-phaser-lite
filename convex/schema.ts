@@ -204,4 +204,17 @@ export default defineSchema({
   }).index("by_protagonist", ["protagonistId"])
     .index("by_timestamp", ["protagonistId", "timestamp"])
     .index("by_importance", ["protagonistId", "importance"]),
+
+  // Ollama load balancer configuration - GPU and model selection
+  ollamaConfig: defineTable({
+    enabled: v.boolean(),                    // Is this server enabled?
+    url: v.string(),                         // Server URL (e.g., "http://localhost:11434")
+    name: v.string(),                        // Display name (e.g., "Local GPU", "Mac GPU")
+    type: v.union(v.literal("ollama"), v.literal("groq")), // Server type
+    weight: v.number(),                      // Weight for load balancing (0.0 to 1.0)
+    model: v.optional(v.string()),           // Model to use (e.g., "llama3.2:1b", "llama-3.3-70b-versatile")
+    priority: v.number(),                    // Display order (lower = higher priority)
+    lastUpdated: v.number(),                 // Timestamp of last change
+  }).index("by_enabled", ["enabled"])        // Find enabled servers
+    .index("by_priority", ["priority"]),     // Sort by priority
 });

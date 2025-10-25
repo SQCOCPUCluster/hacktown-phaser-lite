@@ -1,9 +1,9 @@
-import { logger } from "./logger";
 // Scalar fields system - spatial memory grid for heat, food, and trauma
 // Creates emergent spatial patterns: danger zones, food clustering, haunted areas
 
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { logger } from "./logger";
 
 // GRID CONFIGURATION
 export const GRID_WIDTH = 30;   // 900px / 30px cells = 30 columns
@@ -13,18 +13,7 @@ export const CELL_SIZE = 30;    // Each cell is 30x30 pixels
 // FIELD TYPES
 export type FieldType = "heat" | "food" | "trauma";
 
-// DIFFUSION RATES (how fast values spread to neighbors)
-const HEAT_DIFFUSION_RATE = 0.12;    // Heat spreads quickly like smoke
-const FOOD_DIFFUSION_RATE = 0.05;    // Food doesn't spread much
-const TRAUMA_DIFFUSION_RATE = 0.08;  // Trauma spreads slower than heat
-
-// EVAPORATION RATES (how fast values decay)
-const HEAT_EVAPORATION_RATE = 0.02;  // Heat fades moderately fast
-const FOOD_EVAPORATION_RATE = 0.01;  // Food decays slowly
-const TRAUMA_EVAPORATION_RATE = 0.005; // Trauma lingers longest
-
-// REGROWTH RATES (for food recovery)
-const FOOD_REGROWTH_RATE = 0.002;    // Food slowly regenerates
+// FIELD CONSTANTS (now loaded dynamically from physicsConfig)
 const FOOD_REGROWTH_CAP = 0.8;       // Max food density
 
 /**
@@ -201,10 +190,13 @@ export const diffuseField = internalMutation({
   handler: async (ctx, args: { type: FieldType }) => {
     const { type } = args;
 
+    // Load physics config for diffusion rates
+    const physicsParams = await ctx.runQuery(internal.physicsConfig.getPhysicsParamsWithCache);
+
     // Get diffusion rate for this field type
-    let diffusionRate = HEAT_DIFFUSION_RATE;
-    if (type === "food") diffusionRate = FOOD_DIFFUSION_RATE;
-    if (type === "trauma") diffusionRate = TRAUMA_DIFFUSION_RATE;
+    let diffusionRate = physicsParams["heat-diffusion"] || 0.12;
+    if (type === "food") diffusionRate = physicsParams["food-diffusion"] || 0.05;
+    if (type === "trauma") diffusionRate = physicsParams["trauma-diffusion"] || 0.08;
 
     // Get all cells of this type
     const cells = await ctx.db
@@ -267,10 +259,13 @@ export const evaporateField = internalMutation({
   handler: async (ctx, args: { type: FieldType }) => {
     const { type } = args;
 
+    // Load physics config for evaporation rates
+    const physicsParams = await ctx.runQuery(internal.physicsConfig.getPhysicsParamsWithCache);
+
     // Get evaporation rate
-    let evaporationRate = HEAT_EVAPORATION_RATE;
-    if (type === "food") evaporationRate = FOOD_EVAPORATION_RATE;
-    if (type === "trauma") evaporationRate = TRAUMA_EVAPORATION_RATE;
+    let evaporationRate = physicsParams["heat-evap"] || 0.02;
+    if (type === "food") evaporationRate = physicsParams["food-evap"] || 0.01;
+    if (type === "trauma") evaporationRate = physicsParams["trauma-evap"] || 0.005;
 
     // Get all cells of this type
     const cells = await ctx.db
@@ -294,6 +289,10 @@ export const evaporateField = internalMutation({
  */
 export const regrowFood = internalMutation({
   handler: async (ctx) => {
+    // Load physics config for regrowth rate
+    const physicsParams = await ctx.runQuery(internal.physicsConfig.getPhysicsParamsWithCache);
+    const regrowthRate = physicsParams["food-regrowth"] || 0.002;
+
     const cells = await ctx.db
       .query("fields")
       .withIndex("by_type", (q) => q.eq("type", "food"))
@@ -319,7 +318,7 @@ export const regrowFood = internalMutation({
       if (isNearLandmark && cell.value < FOOD_REGROWTH_CAP) {
         const newValue = Math.min(
           FOOD_REGROWTH_CAP,
-          cell.value + FOOD_REGROWTH_RATE
+          cell.value + regrowthRate
         );
         await ctx.db.patch(cell._id, { value: newValue });
       }

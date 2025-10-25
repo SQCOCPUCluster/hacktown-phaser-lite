@@ -1,12 +1,10 @@
 import { logger } from "./logger";
-import { ollamaLoadBalancer, getLoadBalancer } from "./ollamaLoadBalancer";
+import { getLoadBalancer, getLoadBalancerWithConfig, ServerConfig } from "./ollamaLoadBalancer";
 
 // AI integration - Unified Load Balancer supporting Ollama + Groq
 // Using fetch instead of SDK for Convex compatibility
 
-// Configuration: Unified load balancer automatically handles both Groq and Ollama
-// If GROQ_API_KEY is set, it will use 70% Groq / 30% Ollama
-// If GROQ_API_KEY is not set, it will use 100% Ollama
+// Configuration: Load balancer can now use database-driven config or fallback to hardcoded
 const USE_LOAD_BALANCER = true; // Use unified load balancing (Ollama + Groq)
 
 // Legacy configuration (kept for backward compatibility)
@@ -15,10 +13,11 @@ const OLLAMA_NGROK_URL = "http://100.97.106.7:11434";
 // Fallback: Windows desktop GPU over Tailscale (used when load balancer disabled)
 
 /**
- * Call Groq to generate a thought/action for an NPC
+ * Generate a thought/action for an NPC using database-driven load balancer
  * @param apiKey - The Groq API key from Convex environment
  * @param personality - The NPC's personality traits (0-1 for each)
  * @param context - Contextual information (location, nearby NPCs, events)
+ * @param serverConfigs - Optional server configurations from database (if not provided, uses hardcoded config)
  * @returns A short thought/action string
  */
 export async function generateThought(
@@ -46,12 +45,13 @@ export async function generateThought(
     aggression?: number;
     traumaMemories?: Array<{ type: string; severity: number }>;
     mentalBreakpoint?: number;
-  }
+  },
+  serverConfigs?: ServerConfig[]
 ): Promise<string> {
   // Check if we should use Groq or fallback to Ollama
   if (!USE_GROQ) {
     logger.debug("🔧 Using Ollama via ngrok (Groq disabled)");
-    return generateFallbackThought(personality, context);
+    return generateFallbackThought(personality, context, serverConfigs, apiKey);
   }
 
   // GROQ API CALL - ENABLED WHEN USE_GROQ=true
@@ -96,7 +96,7 @@ export async function generateThought(
   } catch (error) {
     logger.error("Groq API error:", error);
     // Fallback to personality-based defaults if API fails
-    return generateFallbackThought(personality, context);
+    return generateFallbackThought(personality, context, serverConfigs, apiKey);
   }
 }
 
@@ -220,7 +220,12 @@ What is ${name} thinking or doing right now? (one short sentence)
 /**
  * Generate a thought using local Ollama when Groq API is disabled/fails
  */
-async function generateFallbackThought(personality: any, context: any): Promise<string> {
+async function generateFallbackThought(
+  personality: any,
+  context: any,
+  serverConfigs?: ServerConfig[],
+  apiKey?: string
+): Promise<string> {
   try {
     const prompt = buildPrompt(personality, context);
 
@@ -228,8 +233,13 @@ async function generateFallbackThought(personality: any, context: any): Promise<
     if (USE_LOAD_BALANCER) {
       logger.debug("🔄 Using load balancer for thought generation");
 
-      const result = await ollamaLoadBalancer.generate({
-        model: "qwen2.5:3b", // Fast non-thinking model (was qwen3:8b thinking model)
+      // Create load balancer instance with server configs (if provided)
+      const loadBalancer = serverConfigs
+        ? getLoadBalancerWithConfig(serverConfigs, apiKey)
+        : getLoadBalancer(apiKey);
+
+      const result = await loadBalancer.generate({
+        model: "qwen2.5:3b", // Fast non-thinking model (change to match your installed model)
         prompt: `You are shaping a cozy slice-of-life simulation in a hopeful maker town. Default to gentle, optimistic thoughts (max 10-15 words). When the prompt lists despairLevel >= 0.60, let the character acknowledge heavier feelings honestly; otherwise keep the tone curious or encouraging. Return one sentence.
 
 ${prompt}
@@ -257,7 +267,7 @@ Generate ONE natural thought:`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "qwen2.5:3b", // Fast non-thinking model
+          model: "gemma3:12b", // Fast non-thinking model
           prompt: `You are shaping a cozy slice-of-life simulation in a hopeful maker town. Default to gentle, optimistic thoughts (max 10-15 words). When the prompt lists despairLevel >= 0.60, let the character acknowledge heavier feelings honestly; otherwise keep the tone curious or encouraging. Return one sentence.
 
 ${prompt}
@@ -332,13 +342,15 @@ Generate ONE natural thought:`,
  * @returns Array of dialogue lines alternating between NPCs
  */
 export async function generateDialogue(
-  npc1: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[] },
-  npc2: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[] },
+  npc1: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[]; energy?: number; social?: number },
+  npc2: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[]; energy?: number; social?: number },
   context: {
     activeEvents: Array<{ type: string; description: string }>;
     location: { x: number; y: number };
     worldTime: number;
-  }
+  },
+  serverConfigs?: ServerConfig[],
+  apiKey?: string
 ): Promise<Array<{ speaker: string; text: string }>> {
   logger.debug(`🎭 Generating dialogue for ${npc1.name} ↔ ${npc2.name}...`);
   logger.debug(`   Context: ${context.activeEvents.length} events, time: ${context.worldTime}`);
@@ -348,7 +360,7 @@ export async function generateDialogue(
   // Try LLM generation first (Ollama), fall back to templates if fails
   try {
     logger.debug(`🔄 Attempting LLM dialogue generation via Ollama...`);
-    const llmDialogue = await generateLLMDialogue(npc1, npc2, context);
+    const llmDialogue = await generateLLMDialogue(npc1, npc2, context, serverConfigs, apiKey);
     if (llmDialogue && llmDialogue.length > 0) {
       logger.debug(`🤖 ✅ Generated LLM dialogue for ${npc1.name} ↔ ${npc2.name} (${llmDialogue.length} lines)`);
       logger.debug(`   Sample: "${llmDialogue[0].text}"`);
@@ -372,13 +384,15 @@ export async function generateDialogue(
  * Generate dialogue using LLM (Ollama)
  */
 async function generateLLMDialogue(
-  npc1: { name: string; personality: any; memories?: any[] },
-  npc2: { name: string; personality: any; memories?: any[] },
+  npc1: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[]; energy?: number; social?: number },
+  npc2: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[]; energy?: number; social?: number },
   context: {
     activeEvents: Array<{ type: string; description: string }>;
     location: { x: number; y: number };
     worldTime: number;
-  }
+  },
+  serverConfigs?: ServerConfig[],
+  apiKey?: string
 ): Promise<Array<{ speaker: string; text: string }> | null> {
   try {
     // Build contextual prompt for dialogue generation
@@ -391,6 +405,8 @@ ${prompt}
 
 Guidelines:
 - Keep the tone supportive, hopeful, and authentic to small-town life.
+- **CRITICAL**: If a speaker has energy < 0.4, they MUST mention hunger/food/eating in a natural way.
+- **CRITICAL**: If a speaker has social < 0.4, they MUST express loneliness/connection needs naturally.
 - Only speakers whose despairLevel >= 0.60 may voice heavy or dark thoughts; everyone else should stay encouraging or practical.
 - Avoid violent or hopeless language unless the same speaker has despairLevel >= 0.75 or aggressionLevel >= 0.60, and even then keep it grounded and human.
 - End on an optimistic, proactive, or gently humorous note that shows connection.
@@ -401,7 +417,7 @@ ${npc2.name}: [their line]
 ${npc1.name}: [their line]
 ${npc2.name}: [their line]
 
-Each line should be 10-25 words max. PRIORITIZE EMOTIONAL AUTHENTICITY OVER COMFORT.
+Each line should be 10-25 words max. PRIORITIZE EMOTIONAL AUTHENTICITY - hungry people talk about food, lonely people seek connection.
 
 Conversation:`;
 
@@ -411,7 +427,12 @@ Conversation:`;
     if (USE_LOAD_BALANCER) {
       logger.debug("🔄 Using load balancer for dialogue generation");
 
-      const result = await ollamaLoadBalancer.generate({
+      // Create load balancer instance with server configs (if provided)
+      const loadBalancer = serverConfigs
+        ? getLoadBalancerWithConfig(serverConfigs, apiKey)
+        : getLoadBalancer(apiKey);
+
+      const result = await loadBalancer.generate({
         model: "qwen2.5:3b", // Fast non-thinking model (was qwen3:8b)
         prompt: dialoguePrompt,
         stream: false,
@@ -439,7 +460,7 @@ Conversation:`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "qwen2.5:3b", // Fast non-thinking model
+          model: "gemma3:12b", // Fast non-thinking model
           prompt: dialoguePrompt,
           stream: false,
           options: {
@@ -519,8 +540,8 @@ Conversation:`;
  * Build a contextual prompt for dialogue generation
  */
 function buildDialoguePrompt(
-  npc1: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[] },
-  npc2: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[] },
+  npc1: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[]; energy?: number; social?: number },
+  npc2: { name: string; personality: any; memories?: any[]; despair?: number; aggression?: number; traumaMemories?: any[]; energy?: number; social?: number },
   context: {
     activeEvents: Array<{ type: string; description: string }>;
     location: { x: number; y: number };
@@ -545,6 +566,26 @@ function buildDialoguePrompt(
     const emotionalNotes: string[] = [];
     const despairLevel = npc.despair !== undefined ? npc.despair.toFixed(2) : "n/a";
     const aggressionLevel = npc.aggression !== undefined ? npc.aggression.toFixed(2) : "n/a";
+    const energyLevel = npc.energy !== undefined ? npc.energy.toFixed(2) : "n/a";
+    const socialLevel = npc.social !== undefined ? npc.social.toFixed(2) : "n/a";
+
+    // HUNGER STATE (CRITICAL FOR USER FEEDBACK)
+    if (npc.energy !== undefined) {
+      if (npc.energy < 0.2) emotionalNotes.push("STARVING and desperate for food");
+      else if (npc.energy < 0.4) emotionalNotes.push("very hungry and thinking about eating");
+      else if (npc.energy < 0.6) emotionalNotes.push("feeling a bit hungry");
+      else if (npc.energy > 0.8) emotionalNotes.push("well-fed and satisfied");
+    }
+
+    // LONELINESS STATE (CRITICAL FOR USER FEEDBACK)
+    if (npc.social !== undefined) {
+      if (npc.social < 0.2) emotionalNotes.push("extremely lonely and craving connection");
+      else if (npc.social < 0.4) emotionalNotes.push("feeling isolated and wanting company");
+      else if (npc.social < 0.6) emotionalNotes.push("missing social interaction");
+      else if (npc.social > 0.8) emotionalNotes.push("socially fulfilled");
+    }
+
+    // DESPAIR (existing)
     if (npc.despair !== undefined) {
       if (npc.despair >= 0.75) emotionalNotes.push("wrestling with heavy emotions");
       else if (npc.despair >= 0.6) emotionalNotes.push("feeling overwhelmed and seeking support");
@@ -553,6 +594,7 @@ function buildDialoguePrompt(
       else emotionalNotes.push("enjoying the moment");
     }
 
+    // AGGRESSION (existing)
     if (npc.aggression !== undefined) {
       if (npc.aggression >= 0.75) emotionalNotes.push("carrying intense energy");
       else if (npc.aggression >= 0.6) emotionalNotes.push("restless but mindful");
@@ -568,7 +610,7 @@ function buildDialoguePrompt(
     const note =
       emotionalNotes.length > 0 ? ` | emotional notes: ${emotionalNotes.join(", ")}` : "";
 
-    return `${traits.join(", ") || "balanced"} (mood: ${mood}${note} | markers: despair=${despairLevel}, aggression=${aggressionLevel})`;
+    return `${traits.join(", ") || "balanced"} (mood: ${mood}${note} | drives: energy=${energyLevel}, social=${socialLevel} | psychology: despair=${despairLevel}, aggression=${aggressionLevel})`;
   };
 
   // Recent memories

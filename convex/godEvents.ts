@@ -40,17 +40,16 @@ export async function generateGodEvent(context: {
 
     logger.debug("🎭 God is thinking about an emergent event...");
 
-    // Use THINKING MODEL (qwen3:8b) via load balancer for deep creative reasoning
-    // God events benefit from the thinking model's reasoning chains
+    // Use large model (qwen3:30b) via load balancer for creative event generation
     const result = await ollamaLoadBalancer.generate({
-      model: "qwen3:8b", // Thinking model for complex narrative generation
+      model: "qwen3:30b", // Large 30B model for complex narrative generation
       prompt: prompt + "\n\nReturn ONLY valid JSON with no additional text.",
       stream: false,
       options: {
         temperature: 0.95,  // High creativity for varied emergent events
-        num_predict: 300,   // Allow longer responses for thinking + JSON
+        num_predict: 300,   // Allow longer responses for JSON
       },
-      timeout: 60000, // 60s timeout - God can take time to think
+      timeout: 60000, // 60s timeout - Large model may take time to process
     });
 
     if (result && result.response) {

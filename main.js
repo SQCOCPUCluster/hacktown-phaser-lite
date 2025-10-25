@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
 import { ConvexHttpClient } from 'convex/browser';
 import { logger } from './logger.js';
+import { api } from './convex/_generated/api.js';
 
 // Initialize Convex client
 const convexUrl = import.meta.env.VITE_CONVEX_URL || "http://127.0.0.1:3210";
 const convex = new ConvexHttpClient(convexUrl);
 
-// Expose convex client to browser console for debugging
+// Expose convex client and api to browser console for debugging
 window.convex = convex;
+window.api = api;
 
 // Helper function to spawn religious NPCs from console
 window.spawnReligiousNPC = async () => {
@@ -1839,17 +1841,6 @@ logger.debug('🚀 HackTown Convex Edition started');
 // PHYSICS CONTROL PANEL
 // ============================================================
 
-// Toggle panel open/close
-const physicsPanel = document.getElementById('physics-panel');
-const physicsToggleBtn = document.getElementById('physics-toggle-btn');
-
-physicsToggleBtn.addEventListener('click', () => {
-  physicsPanel.classList.toggle('open');
-  physicsToggleBtn.textContent = physicsPanel.classList.contains('open')
-    ? '✖️ Close'
-    : '⚙️ Physics Lab';
-});
-
 // Initialize all physics sliders
 const physicsSliders = document.querySelectorAll('.physics-slider');
 
@@ -1874,25 +1865,40 @@ async function updatePhysicsParameter(key, value) {
   }
 }
 
-// Preset configurations
+// Preset configurations - Complete with all 10 parameters
 const presets = {
   'peaceful': {
     'energy-decay-moving': 0.005,
     'social-decay': 0.001,
+    'heat-diffusion': 0.08,
+    'trauma-diffusion': 0.05,
+    'heat-evap': 0.030,
+    'trauma-evap': 0.020,
     'food-regrowth': 0.005,
-    'trauma-evap': 0.02
+    'isolation-weight': 0.20,
+    'starvation-weight': 0.15
   },
   'harsh': {
     'energy-decay-moving': 0.025,
     'social-decay': 0.008,
+    'heat-diffusion': 0.15,
+    'trauma-diffusion': 0.12,
+    'heat-evap': 0.010,
+    'trauma-evap': 0.002,
     'food-regrowth': 0.0005,
-    'trauma-evap': 0.002
+    'isolation-weight': 0.50,
+    'starvation-weight': 0.45
   },
   'volatile': {
+    'energy-decay-moving': 0.015,
+    'social-decay': 0.005,
     'heat-diffusion': 0.25,
     'trauma-diffusion': 0.18,
-    'heat-evap': 0.05,
-    'trauma-evap': 0.001
+    'heat-evap': 0.005,
+    'trauma-evap': 0.001,
+    'food-regrowth': 0.002,
+    'isolation-weight': 0.40,
+    'starvation-weight': 0.35
   },
   'default': {
     'energy-decay-moving': 0.010,
@@ -1901,7 +1907,9 @@ const presets = {
     'trauma-diffusion': 0.08,
     'heat-evap': 0.020,
     'trauma-evap': 0.005,
-    'food-regrowth': 0.002
+    'food-regrowth': 0.002,
+    'isolation-weight': 0.35,
+    'starvation-weight': 0.30
   }
 };
 
@@ -1935,7 +1943,12 @@ async function refreshPhysicsMetrics() {
     // Update crisis stats
     document.getElementById('metric-despair').textContent = metrics.crisisStats.despairCount;
 
-    logger.debug('📊 Physics metrics refreshed');
+    logger.debug('📊 Physics metrics refreshed:', {
+      totalNPCs: metrics.totalNPCs,
+      actionCounts: metrics.actionCounts,
+      averages: metrics.averages,
+      crisisStats: metrics.crisisStats
+    });
   } catch (error) {
     logger.error('Failed to refresh physics metrics:', error);
   }
@@ -1947,11 +1960,140 @@ if (refreshBtn) {
   refreshBtn.addEventListener('click', refreshPhysicsMetrics);
 }
 
-// Auto-refresh metrics every 10 seconds when panel is open
+// Auto-refresh metrics every 10 seconds
 setInterval(() => {
-  if (physicsPanel.classList.contains('open')) {
-    refreshPhysicsMetrics();
-  }
+  refreshPhysicsMetrics();
 }, 10000);
 
 logger.info('⚙️ Physics Control Panel initialized');
+
+// ============================================================
+// GPU CONFIGURATION PANEL
+// ============================================================
+
+const gpuConfigList = document.getElementById('gpu-config-list');
+
+// Render GPU configurations
+async function renderGPUConfigs() {
+  try {
+    const configs = await convex.query(api.ollamaConfig.getConfigs);
+
+    if (!configs || configs.length === 0) {
+      gpuConfigList.innerHTML = `
+        <div style="text-align: center; color: #666; font-size: 9px; padding: 20px;">
+          No configurations found.<br>Click "⚙️ Setup" to initialize.
+        </div>
+      `;
+      return;
+    }
+
+    gpuConfigList.innerHTML = configs.map(config => {
+      const statusClass = config.enabled ? 'enabled' : 'disabled';
+      const statusText = config.enabled ? '✅ ON' : '❌ OFF';
+      const modelText = config.model ? `Model: <span class="gpu-config-model">${config.model}</span>` : '<span style="color: #666;">No model set</span>';
+      const weightPercent = (config.weight * 100).toFixed(0);
+
+      return `
+        <div class="gpu-config-item">
+          <div class="gpu-config-header">
+            <span class="gpu-config-name">${config.name}</span>
+            <span class="gpu-config-status ${statusClass}">${statusText}</span>
+          </div>
+          <div class="gpu-config-details">
+            Type: <span style="color: #9ad;">${config.type}</span>
+          </div>
+          <div class="gpu-config-details">
+            ${modelText}
+          </div>
+          <div class="gpu-config-details">
+            Weight: <span class="gpu-config-weight">${weightPercent}%</span>
+          </div>
+          <button class="gpu-toggle-btn" data-config-id="${config._id}">
+            ${config.enabled ? '🔴 Disable' : '🟢 Enable'}
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    // Add event listeners to toggle buttons
+    document.querySelectorAll('.gpu-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const configId = btn.getAttribute('data-config-id');
+        try {
+          await convex.mutation(api.ollamaConfig.toggleEnabled, { id: configId });
+          logger.info('🔄 GPU configuration toggled');
+          await renderGPUConfigs();
+        } catch (error) {
+          logger.error('Failed to toggle GPU:', error);
+        }
+      });
+    });
+
+  } catch (error) {
+    logger.error('Failed to render GPU configs:', error);
+    gpuConfigList.innerHTML = `
+      <div style="text-align: center; color: #FF6B35; font-size: 9px; padding: 20px;">
+        Error loading configs:<br>${error.message}
+      </div>
+    `;
+  }
+}
+
+// Initialize defaults
+document.getElementById('gpu-init')?.addEventListener('click', async () => {
+  try {
+    const result = await convex.mutation(api.ollamaConfig.initializeDefaults);
+    logger.info('⚙️ ' + result.message);
+    await renderGPUConfigs();
+  } catch (error) {
+    logger.error('Failed to initialize GPU configs:', error);
+  }
+});
+
+// Refresh configs
+document.getElementById('gpu-refresh')?.addEventListener('click', async () => {
+  await renderGPUConfigs();
+  logger.info('🔄 GPU configurations refreshed');
+});
+
+// Preset buttons
+document.getElementById('gpu-preset-local')?.addEventListener('click', async () => {
+  try {
+    const result = await convex.mutation(api.ollamaConfig.applyPreset, { preset: 'local-only' });
+    logger.info('💻 ' + result.message);
+    await renderGPUConfigs();
+  } catch (error) {
+    logger.error('Failed to apply preset:', error);
+  }
+});
+
+document.getElementById('gpu-preset-mac')?.addEventListener('click', async () => {
+  try {
+    const result = await convex.mutation(api.ollamaConfig.applyPreset, { preset: 'mac-gpu' });
+    logger.info('🍎 ' + result.message);
+    await renderGPUConfigs();
+  } catch (error) {
+    logger.error('Failed to apply preset:', error);
+  }
+});
+
+document.getElementById('gpu-preset-groq')?.addEventListener('click', async () => {
+  try {
+    const result = await convex.mutation(api.ollamaConfig.applyPreset, { preset: 'groq-primary' });
+    logger.info('☁️ ' + result.message);
+    await renderGPUConfigs();
+  } catch (error) {
+    logger.error('Failed to apply preset:', error);
+  }
+});
+
+// Expose to console for advanced usage
+window.renderGPUConfigs = renderGPUConfigs;
+window.addGPU = async (url, name, type, weight, model) => {
+  return await convex.mutation(api.ollamaConfig.addConfig, {
+    url, name, type, weight, model, enabled: true
+  });
+};
+
+logger.info('🎮 GPU Configuration Panel initialized');
+logger.info('💡 Console commands: renderGPUConfigs(), addGPU(url, name, type, weight, model)');

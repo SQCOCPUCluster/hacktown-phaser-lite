@@ -376,6 +376,132 @@
         color: #7ED321;
         font-weight: 700;
       }
+
+      /* GPU Config Panel - Bottom Right Corner */
+      #gpu-panel {
+        position: fixed;
+        right: 10px;
+        bottom: 10px;
+        background: rgba(10, 14, 20, 0.95);
+        border: 2px solid #2a3f5f;
+        border-radius: 8px;
+        padding: 12px;
+        z-index: 15;
+        font-family: 'Departure Mono', 'Courier New', monospace;
+        font-size: 10px;
+        width: 320px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      #gpu-panel::-webkit-scrollbar {
+        width: 6px;
+      }
+      #gpu-panel::-webkit-scrollbar-track {
+        background: rgba(0,0,0,0.3);
+      }
+      #gpu-panel::-webkit-scrollbar-thumb {
+        background: #555;
+        border-radius: 3px;
+      }
+      .gpu-panel-header {
+        font-size: 12px;
+        font-weight: 700;
+        color: #9ad;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-align: center;
+      }
+      .gpu-preset-row {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+      .gpu-preset-btn {
+        flex: 1;
+        padding: 6px 8px;
+        background: #1a2332;
+        border: 1px solid #2a3f5f;
+        border-radius: 4px;
+        color: #9ad;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 9px;
+        transition: all 0.2s ease;
+        text-align: center;
+      }
+      .gpu-preset-btn:hover {
+        background: #2a3f5f;
+        border-color: #9ad;
+      }
+      .gpu-config-item {
+        background: #0f1419;
+        border: 1px solid #2a3f5f;
+        border-radius: 4px;
+        padding: 8px;
+        margin: 8px 0;
+      }
+      .gpu-config-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .gpu-config-name {
+        color: #9ad;
+        font-weight: 700;
+        font-size: 11px;
+      }
+      .gpu-config-status {
+        font-size: 8px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-weight: 700;
+      }
+      .gpu-config-status.enabled {
+        background: #7ED321;
+        color: #000;
+      }
+      .gpu-config-status.disabled {
+        background: #FF6B35;
+        color: #fff;
+      }
+      .gpu-config-details {
+        font-size: 9px;
+        color: #888;
+        margin: 2px 0;
+      }
+      .gpu-config-model {
+        color: #7ED321;
+        font-weight: 700;
+      }
+      .gpu-config-weight {
+        color: #9ad;
+        font-weight: 700;
+      }
+      .gpu-toggle-btn {
+        padding: 4px 10px;
+        background: #1a2332;
+        border: 1px solid #2a3f5f;
+        border-radius: 3px;
+        color: #9ad;
+        cursor: pointer;
+        font-size: 9px;
+        margin-top: 6px;
+        width: 100%;
+        transition: all 0.2s ease;
+      }
+      .gpu-toggle-btn:hover {
+        background: #2a3f5f;
+        border-color: #9ad;
+      }
+      .gpu-action-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid #2a3f5f;
+      }
     </style>
   </head>
   <body>
@@ -617,6 +743,31 @@
       <div class="section">
         <div class="section-title">MAJOR EVENTS</div>
         <div id="protag-events"></div>
+      </div>
+    </div>
+
+    <!-- GPU Configuration Panel - Bottom Right Corner -->
+    <div id="gpu-panel">
+      <div class="gpu-panel-header">🎮 GPU & AI Models</div>
+
+      <!-- Quick Presets -->
+      <div class="gpu-preset-row">
+        <button class="gpu-preset-btn" id="gpu-preset-local">💻 Local</button>
+        <button class="gpu-preset-btn" id="gpu-preset-mac">🍎 Mac</button>
+        <button class="gpu-preset-btn" id="gpu-preset-groq">☁️ Groq</button>
+      </div>
+
+      <!-- GPU List (dynamically populated) -->
+      <div id="gpu-config-list">
+        <div style="text-align: center; color: #666; font-size: 9px; padding: 20px;">
+          Click "⚙️ Setup" to initialize
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="gpu-action-row">
+        <button class="gpu-preset-btn" id="gpu-init" style="flex: 1;">⚙️ Setup</button>
+        <button class="gpu-preset-btn" id="gpu-refresh" style="flex: 1;">🔄 Refresh</button>
       </div>
     </div>
 
